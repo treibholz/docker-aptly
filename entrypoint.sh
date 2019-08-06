@@ -1,6 +1,7 @@
 #!/bin/bash
 
 GPG_BOOTSTRAP=${GPG_BOOTSTRAP:-true}
+GPG_EXPIRE_DATE=${GPG_EXPIRE_DATE:-0}
 REPO_BOOTSTRAP=${REPO_BOOTSTRAP:-true}
 REPO_AUTO_IMPORT=${REPO_AUTO_IMPORT:-true}
 REPO_NAME=${REPO_NAME:-myrepo}
@@ -23,7 +24,7 @@ Subkey-Length: $GPG_KEY_SIZE
 Name-Real: $GPG_NAME
 Name-Comment: aptly
 Name-Email: $GPG_EMAIL
-Expire-Date: 0
+Expire-Date: $GPG_EXPIRE_DATE
 Passphrase: $GPG_PASSPHRASE
 EOF
 
@@ -50,10 +51,14 @@ fi
 
 if [[ "$REPO_AUTO_IMPORT" == "true" ]]; then
     REPO_AUTO_IMPORT_INTERVAL=${REPO_AUTO_IMPORT_INTERVAL:-*/30 * * * *}
-    sudo bash -c "echo -e \"$REPO_AUTO_IMPORT_INTERVAL aptly /add_incoming.sh '$REPO_NAME' '$REPO_DISTRIBUTION' '$GPG_PASSPHRASE' > /incoming/incoming.log 2>&1\n\" > /etc/cron.d/aptly-${REPO_NAME}-cron"
-    
-    echo -e "\nstart cronjob for adding incoming packages"
-    sudo service cron start
+    REPO_AUTO_IMPORT_INTERVAL_MINUTES=${REPO_AUTO_IMPORT_INTERVAL_MINUTES:-30}
+    cat > auto_import.sh <<EOF
+while true; do
+    /add_incoming.sh '$REPO_NAME' '$REPO_DISTRIBUTION' '$GPG_PASSPHRASE' | ts '%c - '>> /incoming/incoming-\$(date -I).log 2>&1
+    sleep $((REPO_AUTO_IMPORT_INTERVAL_MINUTES*60))
+done
+EOF
+    bash -e auto_import.sh & disown
 fi
 
 echo -e "\nserve on port 8080"
